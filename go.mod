@@ -2,7 +2,10 @@ module github.com/shahab5191/openshin
 
 go 1.27.1
 
-require modernc.org/sqlite v1.61.1
+require (
+	github.com/pressly/goose/v3 v3.27.3
+	modernc.org/sqlite v1.61.1
+)
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -48,7 +51,6 @@ require (
 	github.com/pingcap/failpoint v0.0.0-20240528011301-b51a646c7c86 // indirect
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20250324122243-d51e00e5bbf0 // indirect
-	github.com/pressly/goose/v3 v3.27.3 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/riza-io/grpc-go v0.2.0 // indirect
