@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -19,6 +20,7 @@ import (
 	"github.com/shahab5191/openshin/internal/db"
 	"github.com/shahab5191/openshin/internal/ingest"
 	"github.com/shahab5191/openshin/internal/llm"
+	"github.com/shahab5191/openshin/internal/mcp"
 	"github.com/shahab5191/openshin/internal/memory"
 	"github.com/shahab5191/openshin/internal/store"
 )
@@ -35,6 +37,10 @@ func main() {
 		err = runServe(os.Args[2:])
 	case "tail":
 		err = runTail(os.Args[2:])
+	case "mcp":
+		err = runMCP()
+	case "hook":
+		err = runHook()
 	default:
 		usage()
 		os.Exit(2)
@@ -45,7 +51,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: openshin <serve|tail> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: openshin <serve|tail|mcp|hook> [flags]")
 }
 
 func dbPath() string {
@@ -143,5 +149,55 @@ func runTail(args []string) error {
 		return err
 	}
 	log.Printf("tail: scanned %d, ingested %d, skipped %d", res.Scanned, res.Ingested, res.Skipped)
+	return nil
+}
+
+// runMCP serves the memory tools over the MCP stdio transport, for `claude mcp
+// add`. It requires a provider (embeddings and extraction).
+func runMCP() error {
+	d, err := openDB()
+	if err != nil {
+		return err
+	}
+	provider, err := buildProvider()
+	if err != nil {
+		return fmt.Errorf("mcp: %w", err)
+	}
+
+	conv := store.NewConversations(d)
+	mem := store.NewMemory(d)
+	srv := mcp.New(
+		conv,
+		mem,
+		memory.NewShortTerm(conv, provider),
+		memory.NewRetriever(mem, provider),
+		provider,
+	)
+	return mcp.Serve(context.Background(), srv)
+}
+
+// runHook is a Claude Code hook command: it reads the hook payload from stdin,
+// finds the transcript path, and ingests any new lines.
+func runHook() error {
+	var payload struct {
+		TranscriptPath string `json:"transcript_path"`
+	}
+	if err := json.NewDecoder(os.Stdin).Decode(&payload); err != nil {
+		return fmt.Errorf("hook: decode payload: %w", err)
+	}
+	if payload.TranscriptPath == "" {
+		return fmt.Errorf("hook: payload has no transcript_path")
+	}
+
+	d, err := openDB()
+	if err != nil {
+		return err
+	}
+
+	res, err := ingest.NewTailer(store.NewConversations(d)).IngestFile(context.Background(), payload.TranscriptPath)
+	if err != nil {
+		return err
+	}
+	log.Printf("hook: scanned %d, ingested %d, skipped %d", res.Scanned, res.Ingested, res.Skipped)
 	return nil
 }
