@@ -24,7 +24,17 @@ type CreateSegmentParams struct {
 	Subject   sql.NullString
 }
 
-func (q *Queries) CreateSegment(ctx context.Context, arg CreateSegmentParams) (Segment, error) {
+type CreateSegmentRow struct {
+	ID        int64
+	SessionID string
+	ThreadID  string
+	StartSeq  int64
+	EndSeq    int64
+	Subject   sql.NullString
+	CreatedAt string
+}
+
+func (q *Queries) CreateSegment(ctx context.Context, arg CreateSegmentParams) (CreateSegmentRow, error) {
 	row := q.db.QueryRowContext(ctx, createSegment,
 		arg.SessionID,
 		arg.ThreadID,
@@ -32,7 +42,7 @@ func (q *Queries) CreateSegment(ctx context.Context, arg CreateSegmentParams) (S
 		arg.EndSeq,
 		arg.Subject,
 	)
-	var i Segment
+	var i CreateSegmentRow
 	err := row.Scan(
 		&i.ID,
 		&i.SessionID,
@@ -127,15 +137,25 @@ WHERE thread_id = ?
 ORDER BY end_seq
 `
 
-func (q *Queries) ListSegments(ctx context.Context, threadID string) ([]Segment, error) {
+type ListSegmentsRow struct {
+	ID        int64
+	SessionID string
+	ThreadID  string
+	StartSeq  int64
+	EndSeq    int64
+	Subject   sql.NullString
+	CreatedAt string
+}
+
+func (q *Queries) ListSegments(ctx context.Context, threadID string) ([]ListSegmentsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSegments, threadID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Segment
+	var items []ListSegmentsRow
 	for rows.Next() {
-		var i Segment
+		var i ListSegmentsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SessionID,

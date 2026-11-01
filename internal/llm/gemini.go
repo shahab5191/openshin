@@ -55,6 +55,41 @@ var extractFactsSchema = &genai.Schema{
 	Required: []string{"facts"},
 }
 
+// extractLongTermPrompt asks the model to distil durable, role-tagged knowledge
+// worth keeping beyond the decay window.
+const extractLongTermPrompt = `You extract durable knowledge from a segment of conversation for a long-term memory store.
+
+For each thing worth remembering, classify it as exactly one of:
+- "fact": a stable truth about the user's world.
+- "decision": a choice that was made, and its reasoning.
+- "constraint": a boundary or rule that must not be violated.
+
+Return a JSON object with an "items" array of {"role_tag", "content"}. Each content must be self-contained. Return an empty array if nothing is worth keeping long-term.`
+
+var extractLongTermSchema = &genai.Schema{
+	Type: genai.TypeObject,
+	Properties: map[string]*genai.Schema{
+		"items": {
+			Type: genai.TypeArray,
+			Items: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"role_tag": {Type: genai.TypeString},
+					"content":  {Type: genai.TypeString},
+				},
+				Required: []string{"role_tag", "content"},
+			},
+		},
+	},
+	Required: []string{"items"},
+}
+
+// TaggedItem is one role-tagged piece of long-term knowledge.
+type TaggedItem struct {
+	RoleTag string `json:"role_tag"`
+	Content string `json:"content"`
+}
+
 // GeminiConfig carries the settings for the Gemini provider. Zero values fall
 // back to defaults.
 type GeminiConfig struct {
@@ -178,6 +213,44 @@ func (g *Gemini) ExtractFacts(ctx context.Context, text string) ([]string, error
 		return nil, fmt.Errorf("%s: extract facts: decode: %w", g.Name(), err)
 	}
 	return out.Facts, nil
+}
+
+// ExtractLongTerm distils durable, role-tagged knowledge from a segment. The
+// returned slice may be empty.
+func (g *Gemini) ExtractLongTerm(ctx context.Context, text string) ([]TaggedItem, error) {
+	if text == "" {
+		return nil, fmt.Errorf("%s: extract long-term: empty text", g.Name())
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+
+	cfg := &genai.GenerateContentConfig{
+		SystemInstruction: genai.NewContentFromText(extractLongTermPrompt, genai.RoleUser),
+		ResponseMIMEType:  "application/json",
+		ResponseSchema:    extractLongTermSchema,
+	}
+
+	resp, err := g.client.Models.GenerateContent(ctx, g.model, genai.Text(text), cfg)
+	if err != nil {
+		return nil, fmt.Errorf("%s: extract long-term: %w", g.Name(), err)
+	}
+	if len(resp.Candidates) == 0 {
+		return nil, fmt.Errorf("%s: extract long-term: no candidates", g.Name())
+	}
+
+	raw := strings.TrimSpace(resp.Text())
+	if raw == "" {
+		return nil, fmt.Errorf("%s: extract long-term: empty response", g.Name())
+	}
+
+	var out struct {
+		Items []TaggedItem `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, fmt.Errorf("%s: extract long-term: decode: %w", g.Name(), err)
+	}
+	return out.Items, nil
 }
 
 // Embed computes a 768-dimension embedding for text.
