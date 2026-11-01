@@ -90,6 +90,35 @@ type TaggedItem struct {
 	Content string `json:"content"`
 }
 
+// Skill is a reusable procedure extracted from AI activity. An empty Name means
+// the conversation contained nothing reusable.
+type Skill struct {
+	Name    string `json:"name"`
+	Trigger string `json:"trigger"`
+	Steps   string `json:"steps"`
+}
+
+// extractSkillPrompt asks the model to generalise a subagent conversation into
+// a reusable procedure.
+const extractSkillPrompt = `You generalise an AI worker's conversation into a reusable procedure.
+
+If the conversation shows how a problem was solved (a procedure another task could reuse), return a JSON object with:
+- "name": a short, specific label for the procedure.
+- "trigger": when to use it.
+- "steps": the concrete steps taken.
+
+If there is nothing reusable, return all three as empty strings.`
+
+var extractSkillSchema = &genai.Schema{
+	Type: genai.TypeObject,
+	Properties: map[string]*genai.Schema{
+		"name":    {Type: genai.TypeString},
+		"trigger": {Type: genai.TypeString},
+		"steps":   {Type: genai.TypeString},
+	},
+	Required: []string{"name", "trigger", "steps"},
+}
+
 // GeminiConfig carries the settings for the Gemini provider. Zero values fall
 // back to defaults.
 type GeminiConfig struct {
@@ -251,6 +280,41 @@ func (g *Gemini) ExtractLongTerm(ctx context.Context, text string) ([]TaggedItem
 		return nil, fmt.Errorf("%s: extract long-term: decode: %w", g.Name(), err)
 	}
 	return out.Items, nil
+}
+
+// ExtractSkill generalises a subagent conversation into a reusable procedure.
+func (g *Gemini) ExtractSkill(ctx context.Context, text string) (Skill, error) {
+	if text == "" {
+		return Skill{}, fmt.Errorf("%s: extract skill: empty text", g.Name())
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+
+	cfg := &genai.GenerateContentConfig{
+		SystemInstruction: genai.NewContentFromText(extractSkillPrompt, genai.RoleUser),
+		ResponseMIMEType:  "application/json",
+		ResponseSchema:    extractSkillSchema,
+	}
+
+	resp, err := g.client.Models.GenerateContent(ctx, g.model, genai.Text(text), cfg)
+	if err != nil {
+		return Skill{}, fmt.Errorf("%s: extract skill: %w", g.Name(), err)
+	}
+	if len(resp.Candidates) == 0 {
+		return Skill{}, fmt.Errorf("%s: extract skill: no candidates", g.Name())
+	}
+
+	raw := strings.TrimSpace(resp.Text())
+	if raw == "" {
+		return Skill{}, fmt.Errorf("%s: extract skill: empty response", g.Name())
+	}
+
+	var out Skill
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return Skill{}, fmt.Errorf("%s: extract skill: decode: %w", g.Name(), err)
+	}
+	return out, nil
 }
 
 // Embed computes a 768-dimension embedding for text.

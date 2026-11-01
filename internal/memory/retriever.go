@@ -9,11 +9,12 @@ import (
 	"github.com/shahab5191/openshin/internal/store"
 )
 
-// retrieverStore is what search needs: the active mid-term facts and the
-// long-term items, both carrying embeddings.
+// retrieverStore is what search needs: the active mid-term facts, the long-term
+// items, and the skills, all carrying embeddings.
 type retrieverStore interface {
 	ListActiveFacts(ctx context.Context, sessionID, now string) ([]store.Fact, error)
 	ListLongTerm(ctx context.Context, sessionID string) ([]store.LongTermItem, error)
+	ListSkills(ctx context.Context, sessionID string) ([]store.Skill, error)
 }
 
 // SearchResult is one retrieved memory item, ranked by similarity.
@@ -57,6 +58,10 @@ func (r *Retriever) Search(ctx context.Context, sessionID, query string, topK in
 	if err != nil {
 		return nil, err
 	}
+	skills, err := r.store.ListSkills(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
 
 	type candidate struct {
 		content, roleTag string
@@ -64,7 +69,7 @@ func (r *Retriever) Search(ctx context.Context, sessionID, query string, topK in
 		sim              float64
 	}
 
-	cands := make([]candidate, 0, len(facts)+len(items))
+	cands := make([]candidate, 0, len(facts)+len(items)+len(skills))
 	for _, f := range facts {
 		cands = append(cands, candidate{
 			content:  f.Fact,
@@ -80,6 +85,13 @@ func (r *Retriever) Search(ctx context.Context, sessionID, query string, topK in
 			startSeq: it.StartSeq,
 			endSeq:   it.EndSeq,
 			sim:      cosine(qEmb, store.DecodeEmbedding(it.Embedding)),
+		})
+	}
+	for _, sk := range skills {
+		cands = append(cands, candidate{
+			content: sk.Name + ": " + sk.Steps,
+			roleTag: "skill",
+			sim:     cosine(qEmb, store.DecodeEmbedding(sk.Embedding)),
 		})
 	}
 

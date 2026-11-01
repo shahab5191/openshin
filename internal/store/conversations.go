@@ -51,6 +51,7 @@ type Thread struct {
 	Kind           string `json:"kind"`
 	Brief          string `json:"brief,omitempty"`
 	Subject        string `json:"subject,omitempty"`
+	Distilled      bool   `json:"distilled,omitempty"`
 	CreatedAt      string `json:"created_at"`
 	CompletedAt    string `json:"completed_at,omitempty"`
 }
@@ -259,6 +260,7 @@ func toThread(r sqlc.Thread) Thread {
 		Kind:           r.Kind,
 		Brief:          r.Brief.String,
 		Subject:        r.Subject.String,
+		Distilled:      r.Distilled != 0,
 		CreatedAt:      r.CreatedAt,
 		CompletedAt:    r.CompletedAt.String,
 	}

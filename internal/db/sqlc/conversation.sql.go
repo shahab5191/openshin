@@ -73,7 +73,7 @@ func (q *Queries) GetMessageBySourceRef(ctx context.Context, sourceRef sql.NullS
 }
 
 const getThread = `-- name: GetThread :one
-SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject
+SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject, distilled
 FROM thread
 WHERE id = ?
 `
@@ -91,6 +91,7 @@ func (q *Queries) GetThread(ctx context.Context, id string) (Thread, error) {
 		&i.CreatedAt,
 		&i.CompletedAt,
 		&i.Subject,
+		&i.Distilled,
 	)
 	return i, err
 }
@@ -141,7 +142,7 @@ func (q *Queries) LatestMessages(ctx context.Context, arg LatestMessagesParams) 
 }
 
 const listThreads = `-- name: ListThreads :many
-SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject
+SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject, distilled
 FROM thread
 ORDER BY created_at ASC
 `
@@ -165,6 +166,7 @@ func (q *Queries) ListThreads(ctx context.Context) ([]Thread, error) {
 			&i.CreatedAt,
 			&i.CompletedAt,
 			&i.Subject,
+			&i.Distilled,
 		); err != nil {
 			return nil, err
 		}

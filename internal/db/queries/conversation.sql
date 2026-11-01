@@ -38,11 +38,11 @@ WHERE thread_id = ? AND seq >= ? AND seq <= ?
 ORDER BY seq ASC;
 
 -- name: GetThread :one
-SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject
+SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject, distilled
 FROM thread
 WHERE id = ?;
 
 -- name: ListThreads :many
-SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject
+SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at, subject, distilled
 FROM thread
 ORDER BY created_at ASC;

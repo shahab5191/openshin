@@ -60,6 +60,20 @@ type Session struct {
 	CreatedAt string
 }
 
+type SkillMemory struct {
+	ID           int64
+	SessionID    string
+	Name         string
+	Trigger      string
+	Steps        string
+	Embedding    []byte
+	SourceThread sql.NullString
+	UseCount     int64
+	LastUsedAt   sql.NullString
+	NameHash     string
+	CreatedAt    string
+}
+
 type Thread struct {
 	ID             string
 	SessionID      string
@@ -70,4 +84,5 @@ type Thread struct {
 	CreatedAt      string
 	CompletedAt    sql.NullString
 	Subject        sql.NullString
+	Distilled      int64
 }
