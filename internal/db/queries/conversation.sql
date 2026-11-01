@@ -24,6 +24,13 @@ SELECT seq, thread_id, thread_seq, actor, role, content, source_ref, created_at
 FROM conversation
 WHERE source_ref = ?;
 
+-- name: LatestMessages :many
+SELECT seq, thread_id, thread_seq, actor, role, content, source_ref, created_at
+FROM conversation
+WHERE thread_id = ?
+ORDER BY seq DESC
+LIMIT ?;
+
 -- name: ReadRange :many
 SELECT seq, thread_id, thread_seq, actor, role, content, source_ref, created_at
 FROM conversation

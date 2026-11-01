@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,24 +10,33 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shahab5191/openshin/internal/memory"
 	"github.com/shahab5191/openshin/internal/store"
 )
+
+// ContextAssembler returns assembled short-term context for a thread. It is nil
+// when the daemon has no summarizer configured.
+type ContextAssembler interface {
+	Assemble(ctx context.Context, threadID string) (memory.Context, error)
+}
 
 // Server exposes the agent-agnostic ingest and read API over HTTP. It is the
 // contract every agent adapter (hooks, transcript tailer, MCP) ultimately
 // reduces to.
 type Server struct {
-	store *store.Conversations
+	store   *store.Conversations
+	context ContextAssembler
 }
 
-func NewServer(s *store.Conversations) *Server {
-	return &Server{store: s}
+func NewServer(s *store.Conversations, ctx ContextAssembler) *Server {
+	return &Server{store: s, context: ctx}
 }
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/ingest", s.handleIngest())
 	mux.HandleFunc("GET /v1/threads/{id}/messages", s.handleReadRange())
+	mux.HandleFunc("GET /v1/threads/{id}/context", s.handleContext())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -119,6 +129,28 @@ func (s *Server) handleReadRange() http.HandlerFunc {
 			"end_seq":   end,
 			"messages":  msgs,
 		})
+	}
+}
+
+func (s *Server) handleContext() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		threadID := r.PathValue("id")
+		if threadID == "" {
+			http.Error(w, "thread id is required", http.StatusBadRequest)
+			return
+		}
+		if s.context == nil {
+			http.Error(w, "context not configured", http.StatusNotImplemented)
+			return
+		}
+
+		c, err := s.context.Assemble(r.Context(), threadID)
+		if err != nil {
+			slog.Error("context failed", "thread", threadID, "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, c)
 	}
 }
 
