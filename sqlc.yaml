@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    # sqlc reads the goose migrations to learn the schema, so a query that
+    # references a column no migration created fails at generate time.
+    schema: "migrations"
+    queries: "internal/db/queries"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/db/sqlc"
