@@ -95,7 +95,8 @@ func runServe(args []string) error {
 
 		mid := memory.NewMidTerm(memStore, provider, provider, provider)
 		long := memory.NewLongTerm(memStore, provider, provider)
-		go runPipeline(mid, long, *promoteEvery)
+		skill := memory.NewSkillMemory(memStore, provider, provider)
+		go runPipeline(mid, long, skill, *promoteEvery)
 		log.Printf("memory pipeline: every %s", *promoteEvery)
 	} else {
 		log.Printf("no GEMINI_API_KEY (%v); memory pipeline disabled, ingest still works", err)
@@ -106,7 +107,7 @@ func runServe(args []string) error {
 	return server.ListenAndServe(*addr)
 }
 
-func runPipeline(mid *memory.MidTerm, long *memory.LongTerm, interval time.Duration) {
+func runPipeline(mid *memory.MidTerm, long *memory.LongTerm, skill *memory.SkillMemory, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -116,6 +117,9 @@ func runPipeline(mid *memory.MidTerm, long *memory.LongTerm, interval time.Durat
 		}
 		if err := long.Run(ctx); err != nil {
 			log.Printf("long-term: %v", err)
+		}
+		if err := skill.Run(ctx); err != nil {
+			log.Printf("skill: %v", err)
 		}
 	}
 }

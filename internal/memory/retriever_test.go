@@ -59,6 +59,28 @@ func TestSearchSurfacesRoleTags(t *testing.T) {
 	}
 }
 
+func TestSearchSurfacesSkill(t *testing.T) {
+	db := testdb.Open(t)
+	mem := store.NewMemory(db)
+	ctx := context.Background()
+
+	if err := mem.UpsertSkill(ctx, store.Skill{
+		SessionID: "s1", Name: "pin the version", Trigger: "drift", Steps: "edit go.mod",
+		Embedding: store.EncodeEmbedding([]float32{1, 0, 0}), NameHash: "s",
+	}); err != nil {
+		t.Fatalf("upsert skill: %v", err)
+	}
+
+	ret := NewRetriever(mem, &fakeExtractors{embed: []float32{1, 0, 0}})
+	results, err := ret.Search(ctx, "s1", "how to pin", 5)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].RoleTag != "skill" {
+		t.Fatalf("expected a skill result, got %+v", results)
+	}
+}
+
 func TestCosine(t *testing.T) {
 	if got := cosine([]float32{1, 0}, []float32{1, 0}); got != 1 {
 		t.Fatalf("identical vectors should be 1, got %v", got)
