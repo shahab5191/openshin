@@ -19,6 +19,18 @@ type Conversation struct {
 	CreatedAt string
 }
 
+type LongTermMemory struct {
+	ID             int64
+	SessionID      string
+	Content        string
+	RoleTag        string
+	Embedding      []byte
+	SourceStartSeq int64
+	SourceEndSeq   int64
+	ContentHash    string
+	CreatedAt      string
+}
+
 type MidTermFact struct {
 	ID        int64
 	SessionID string
@@ -40,6 +52,7 @@ type Segment struct {
 	EndSeq    int64
 	Subject   sql.NullString
 	CreatedAt string
+	Distilled int64
 }
 
 type Session struct {

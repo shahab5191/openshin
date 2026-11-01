@@ -83,29 +83,39 @@ func runServe(args []string) error {
 		return err
 	}
 
-	var ctx api.ContextAssembler
-	if provider, err := buildProvider(); err == nil {
-		ctx = memory.NewShortTerm(store.NewConversations(d), provider)
-		log.Printf("short-term summarizer: %s", provider.Name())
+	convStore := store.NewConversations(d)
+	memStore := store.NewMemory(d)
 
-		mid := memory.NewMidTerm(store.NewMemory(d), provider, provider, provider)
-		go runPromoteLoop(mid, *promoteEvery)
-		log.Printf("mid-term promotion: every %s", *promoteEvery)
+	var ctx api.ContextAssembler
+	var searcher api.Searcher
+	if provider, err := buildProvider(); err == nil {
+		ctx = memory.NewShortTerm(convStore, provider)
+		searcher = memory.NewRetriever(memStore, provider)
+		log.Printf("memory provider: %s", provider.Name())
+
+		mid := memory.NewMidTerm(memStore, provider, provider, provider)
+		long := memory.NewLongTerm(memStore, provider, provider)
+		go runPipeline(mid, long, *promoteEvery)
+		log.Printf("memory pipeline: every %s", *promoteEvery)
 	} else {
 		log.Printf("no GEMINI_API_KEY (%v); memory pipeline disabled, ingest still works", err)
 	}
 
-	server := api.NewServer(store.NewConversations(d), ctx)
+	server := api.NewServer(convStore, ctx, searcher)
 	log.Printf("openshin: serving ingest API on %s", *addr)
 	return server.ListenAndServe(*addr)
 }
 
-func runPromoteLoop(mid *memory.MidTerm, interval time.Duration) {
+func runPipeline(mid *memory.MidTerm, long *memory.LongTerm, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for range ticker.C {
-		if err := mid.Run(context.Background()); err != nil {
-			log.Printf("mid-term promote: %v", err)
+		ctx := context.Background()
+		if err := mid.Run(ctx); err != nil {
+			log.Printf("mid-term: %v", err)
+		}
+		if err := long.Run(ctx); err != nil {
+			log.Printf("long-term: %v", err)
 		}
 	}
 }

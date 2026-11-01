@@ -13,16 +13,16 @@ import (
 	"github.com/shahab5191/openshin/internal/store"
 )
 
-func newTestServer(t *testing.T, ctx ContextAssembler) *httptest.Server {
+func newTestServer(t *testing.T, ctx ContextAssembler, search Searcher) *httptest.Server {
 	t.Helper()
-	s := NewServer(store.NewConversations(testdb.Open(t)), ctx)
+	s := NewServer(store.NewConversations(testdb.Open(t)), ctx, search)
 	ts := httptest.NewServer(s.Routes())
 	t.Cleanup(ts.Close)
 	return ts
 }
 
 func TestIngestAndReadRange(t *testing.T) {
-	ts := newTestServer(t, nil)
+	ts := newTestServer(t, nil, nil)
 
 	body := `{"session_id":"s1","actor":"user","role":"user","content":"hello"}`
 	resp, err := http.Post(ts.URL+"/v1/ingest", "application/json", strings.NewReader(body))
@@ -50,7 +50,7 @@ func TestIngestAndReadRange(t *testing.T) {
 }
 
 func TestIngestRejectsEmptyContent(t *testing.T) {
-	ts := newTestServer(t, nil)
+	ts := newTestServer(t, nil, nil)
 
 	body := `{"session_id":"s1","actor":"user","role":"user","content":""}`
 	resp, err := http.Post(ts.URL+"/v1/ingest", "application/json", strings.NewReader(body))
@@ -65,7 +65,7 @@ func TestIngestRejectsEmptyContent(t *testing.T) {
 
 func TestContextEndpoint(t *testing.T) {
 	fake := &fakeContext{c: memory.Context{RollingSummary: "summary", Messages: nil}}
-	ts := newTestServer(t, fake)
+	ts := newTestServer(t, fake, nil)
 
 	resp, err := http.Get(ts.URL + "/v1/threads/t1/context")
 	if err != nil {
@@ -86,6 +86,32 @@ type fakeContext struct {
 
 func (f *fakeContext) Assemble(ctx context.Context, threadID string) (memory.Context, error) {
 	return f.c, nil
+}
+
+func TestSearchEndpoint(t *testing.T) {
+	fake := &fakeSearcher{results: []memory.SearchResult{{Content: "constraint", RoleTag: "constraint", Similarity: 0.9}}}
+	ts := newTestServer(t, nil, fake)
+
+	body := `{"session_id":"s1","query":"what are the rules"}`
+	resp, err := http.Post(ts.URL+"/v1/search", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(readBody(t, resp), `"role_tag":"constraint"`) {
+		t.Fatalf("missing role tag: %s", readBody(t, resp))
+	}
+}
+
+type fakeSearcher struct {
+	results []memory.SearchResult
+}
+
+func (f *fakeSearcher) Search(ctx context.Context, sessionID, query string, topK int) ([]memory.SearchResult, error) {
+	return f.results, nil
 }
 
 func readBody(t *testing.T, resp *http.Response) string {

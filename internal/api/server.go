@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shahab5191/openshin/internal/memory"
@@ -20,16 +21,22 @@ type ContextAssembler interface {
 	Assemble(ctx context.Context, threadID string) (memory.Context, error)
 }
 
+// Searcher ranks stored memories by similarity to a query.
+type Searcher interface {
+	Search(ctx context.Context, sessionID, query string, topK int) ([]memory.SearchResult, error)
+}
+
 // Server exposes the agent-agnostic ingest and read API over HTTP. It is the
 // contract every agent adapter (hooks, transcript tailer, MCP) ultimately
 // reduces to.
 type Server struct {
 	store   *store.Conversations
 	context ContextAssembler
+	search  Searcher
 }
 
-func NewServer(s *store.Conversations, ctx ContextAssembler) *Server {
-	return &Server{store: s, context: ctx}
+func NewServer(s *store.Conversations, ctx ContextAssembler, search Searcher) *Server {
+	return &Server{store: s, context: ctx, search: search}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -37,6 +44,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/ingest", s.handleIngest())
 	mux.HandleFunc("GET /v1/threads/{id}/messages", s.handleReadRange())
 	mux.HandleFunc("GET /v1/threads/{id}/context", s.handleContext())
+	mux.HandleFunc("POST /v1/search", s.handleSearch())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -151,6 +159,39 @@ func (s *Server) handleContext() http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, c)
+	}
+}
+
+type searchRequest struct {
+	SessionID string `json:"session_id"`
+	Query     string `json:"query"`
+	TopK      int    `json:"top_k"`
+}
+
+func (s *Server) handleSearch() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.search == nil {
+			http.Error(w, "search not configured", http.StatusNotImplemented)
+			return
+		}
+
+		var req searchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if req.SessionID == "" || strings.TrimSpace(req.Query) == "" {
+			http.Error(w, "session_id and query are required", http.StatusBadRequest)
+			return
+		}
+
+		results, err := s.search.Search(r.Context(), req.SessionID, req.Query, req.TopK)
+		if err != nil {
+			slog.Error("search failed", "session", req.SessionID, "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"results": results})
 	}
 }
 
