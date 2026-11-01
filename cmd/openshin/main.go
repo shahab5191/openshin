@@ -16,6 +16,8 @@ import (
 	"github.com/shahab5191/openshin/internal/api"
 	"github.com/shahab5191/openshin/internal/db"
 	"github.com/shahab5191/openshin/internal/ingest"
+	"github.com/shahab5191/openshin/internal/llm"
+	"github.com/shahab5191/openshin/internal/memory"
 	"github.com/shahab5191/openshin/internal/store"
 )
 
@@ -71,7 +73,22 @@ func runServe(args []string) error {
 		return err
 	}
 
-	server := api.NewServer(s)
+	// The short-term context assembly needs a summarizer. It is optional: without
+	// a GEMINI_API_KEY the context endpoint reports not-configured and ingest
+	// still works.
+	var ctx api.ContextAssembler
+	if cfg, err := llm.GeminiConfigFromEnv(); err == nil {
+		provider, err := llm.NewGemini(context.Background(), cfg)
+		if err != nil {
+			return err
+		}
+		ctx = memory.NewShortTerm(s, provider)
+		log.Printf("short-term summarizer: %s", provider.Name())
+	} else {
+		log.Printf("no GEMINI_API_KEY (%v); context endpoint disabled", err)
+	}
+
+	server := api.NewServer(s, ctx)
 	log.Printf("openshin: serving ingest API on %s", *addr)
 	return server.ListenAndServe(*addr)
 }

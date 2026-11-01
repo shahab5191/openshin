@@ -94,6 +94,51 @@ func (q *Queries) GetThread(ctx context.Context, id string) (Thread, error) {
 	return i, err
 }
 
+const latestMessages = `-- name: LatestMessages :many
+SELECT seq, thread_id, thread_seq, actor, role, content, source_ref, created_at
+FROM conversation
+WHERE thread_id = ?
+ORDER BY seq DESC
+LIMIT ?
+`
+
+type LatestMessagesParams struct {
+	ThreadID string
+	Limit    int64
+}
+
+func (q *Queries) LatestMessages(ctx context.Context, arg LatestMessagesParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, latestMessages, arg.ThreadID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Conversation
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ThreadID,
+			&i.ThreadSeq,
+			&i.Actor,
+			&i.Role,
+			&i.Content,
+			&i.SourceRef,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listThreads = `-- name: ListThreads :many
 SELECT id, session_id, parent_thread_id, task_id, kind, brief, created_at, completed_at
 FROM thread

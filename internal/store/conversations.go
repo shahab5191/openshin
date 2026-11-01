@@ -211,6 +211,31 @@ func (c *Conversations) ListThreads(ctx context.Context) ([]Thread, error) {
 	return threads, nil
 }
 
+// RecentMessages returns the most recent limit messages of a thread, oldest
+// first. limit is a safety cap on the read, not a correctness bound.
+func (c *Conversations) RecentMessages(ctx context.Context, threadID string, limit int) ([]Message, error) {
+	if threadID == "" {
+		return nil, fmt.Errorf("recent messages: empty thread id")
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("recent messages: non-positive limit %d", limit)
+	}
+
+	rows, err := c.q.LatestMessages(ctx, sqlc.LatestMessagesParams{
+		ThreadID: threadID,
+		Limit:    int64(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("recent messages: %w", err)
+	}
+
+	msgs := make([]Message, 0, len(rows))
+	for i := len(rows) - 1; i >= 0; i-- {
+		msgs = append(msgs, toMessage(rows[i]))
+	}
+	return msgs, nil
+}
+
 func toMessage(r sqlc.Conversation) Message {
 	return Message{
 		Seq:       r.Seq,
