@@ -10,6 +10,20 @@ might conflict — across sessions, for effectively unbounded history.
 
 The agent is the brain. openshin is the memory.
 
+## Vision
+
+openshin is a **unified memory that every local agent shares**, and that over
+time becomes the **knowledge hub** those agents rely on. As memory accumulates,
+each new task starts from everything already learned — what was built, what was
+decided, what works, and what must not be broken — so agents work more
+efficiently and more accurately, and the compounding knowledge moves them from
+*recall*, to *expert advice*, toward *taking on tasks themselves*.
+
+The dependency that matters is trust, not size: autonomy scales with how
+*correct and current* the memory is. That is why the design favours worthiness
+filtering, role tags (`decision`/`constraint`), conflict detection, and
+provenance over simply storing more.
+
 ---
 
 ## 1. What it is and is not

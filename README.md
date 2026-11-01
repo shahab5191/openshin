@@ -1,9 +1,15 @@
 # openshin
 
-Local layered-memory daemon for agents. Records every conversation, distils it
-into decaying mid-term facts, durable long-term knowledge, and procedural skill
-memory, and lets an orchestrator agent (and its fanout subagents) recall what has
-been done, what was decided, and what might conflict — across sessions.
+A unified, layered memory for local agents — one daemon, one SQLite file, that
+every agent on the machine reads and writes. Over time it becomes the knowledge
+hub: the place agents go to recall what has been done, what was decided, and
+what works, so each new task starts from everything already learned instead of
+from zero.
+
+It records every conversation and distils it into decaying mid-term facts,
+durable long-term knowledge, and procedural skill memory, so an orchestrator
+agent and its fanout subagents work more efficiently and accurately as their
+shared context grows.
 
 Pull-only: openshin never injects context into an agent; agents retrieve on
 demand through MCP tools.
@@ -39,3 +45,7 @@ make build        # go build ./...
 make test         # go test ./...
 make vet          # go vet ./...
 ```
+
+## License
+
+[GPL-3.0](LICENSE)
