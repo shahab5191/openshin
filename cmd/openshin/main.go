@@ -2,16 +2,18 @@
 //
 // Subcommands:
 //
-//	serve            run the ingest + read HTTP API
+//	serve            run the ingest + read HTTP API (and the memory pipeline)
 //	tail <transcript> ingest new lines from a Claude Code transcript JSONL file
 package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/shahab5191/openshin/internal/api"
 	"github.com/shahab5191/openshin/internal/db"
@@ -53,44 +55,59 @@ func dbPath() string {
 	return "./openshin.db"
 }
 
-func openStore() (*store.Conversations, error) {
-	d, err := db.Connect(dbPath())
+func openDB() (*sql.DB, error) {
+	return db.Connect(dbPath())
+}
+
+// buildProvider returns a Gemini provider if a key is configured, else nil. The
+// memory pipeline (rolling summary, mid-term extraction) is disabled without it;
+// ingest still works.
+func buildProvider() (*llm.Gemini, error) {
+	cfg, err := llm.GeminiConfigFromEnv()
 	if err != nil {
 		return nil, err
 	}
-	return store.NewConversations(d), nil
+	return llm.NewGemini(context.Background(), cfg)
 }
 
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", ":8080", "listen address")
+	promoteEvery := fs.Duration("promote-every", 5*time.Second, "mid-term promotion interval")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	s, err := openStore()
+	d, err := openDB()
 	if err != nil {
 		return err
 	}
 
-	// The short-term context assembly needs a summarizer. It is optional: without
-	// a GEMINI_API_KEY the context endpoint reports not-configured and ingest
-	// still works.
 	var ctx api.ContextAssembler
-	if cfg, err := llm.GeminiConfigFromEnv(); err == nil {
-		provider, err := llm.NewGemini(context.Background(), cfg)
-		if err != nil {
-			return err
-		}
-		ctx = memory.NewShortTerm(s, provider)
+	if provider, err := buildProvider(); err == nil {
+		ctx = memory.NewShortTerm(store.NewConversations(d), provider)
 		log.Printf("short-term summarizer: %s", provider.Name())
+
+		mid := memory.NewMidTerm(store.NewMemory(d), provider, provider, provider)
+		go runPromoteLoop(mid, *promoteEvery)
+		log.Printf("mid-term promotion: every %s", *promoteEvery)
 	} else {
-		log.Printf("no GEMINI_API_KEY (%v); context endpoint disabled", err)
+		log.Printf("no GEMINI_API_KEY (%v); memory pipeline disabled, ingest still works", err)
 	}
 
-	server := api.NewServer(s, ctx)
+	server := api.NewServer(store.NewConversations(d), ctx)
 	log.Printf("openshin: serving ingest API on %s", *addr)
 	return server.ListenAndServe(*addr)
+}
+
+func runPromoteLoop(mid *memory.MidTerm, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		if err := mid.Run(context.Background()); err != nil {
+			log.Printf("mid-term promote: %v", err)
+		}
+	}
 }
 
 func runTail(args []string) error {
@@ -102,12 +119,12 @@ func runTail(args []string) error {
 		return fmt.Errorf("tail: expected exactly one transcript path")
 	}
 
-	s, err := openStore()
+	d, err := openDB()
 	if err != nil {
 		return err
 	}
 
-	res, err := ingest.NewTailer(s).IngestFile(context.Background(), fs.Arg(0))
+	res, err := ingest.NewTailer(store.NewConversations(d)).IngestFile(context.Background(), fs.Arg(0))
 	if err != nil {
 		return err
 	}

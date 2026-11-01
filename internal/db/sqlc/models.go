@@ -19,6 +19,29 @@ type Conversation struct {
 	CreatedAt string
 }
 
+type MidTermFact struct {
+	ID        int64
+	SessionID string
+	ThreadID  string
+	Fact      string
+	Embedding []byte
+	StartSeq  int64
+	EndSeq    int64
+	FactHash  string
+	ExpiresAt string
+	CreatedAt string
+}
+
+type Segment struct {
+	ID        int64
+	SessionID string
+	ThreadID  string
+	StartSeq  int64
+	EndSeq    int64
+	Subject   sql.NullString
+	CreatedAt string
+}
+
 type Session struct {
 	ID        string
 	CreatedAt string
@@ -33,4 +56,5 @@ type Thread struct {
 	Brief          sql.NullString
 	CreatedAt      string
 	CompletedAt    sql.NullString
+	Subject        sql.NullString
 }
