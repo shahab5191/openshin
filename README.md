@@ -18,32 +18,37 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 
 ## Status
 
-Phase 0 — scaffold only. No memory logic is implemented yet.
+Local system implemented (phases 0–6): raw log + ingest, short-term context,
+mid-term facts, long-term knowledge, skill memory, and MCP/hooks alignment.
+The fleet (shared backend, many agents) is the remaining, not-yet-started phase.
 
 ## Layout
 
 ```
-cmd/openshin/         daemon binary (serve / mcp / context)
+cmd/openshin/         daemon binary (serve / tail / mcp / hook)
 internal/db/          SQLite connect + sqlc-generated queries
-internal/db/queries/  sqlc query files (phase 1+)
-internal/store/       repository layer (phase 1+)
-internal/memory/      memory layers (phase 2+)
-internal/pipeline/    promotion engine (phase 3+)
-internal/llm/         provider abstraction (phase 1+)
-internal/mcp/         MCP tool server (phase 6)
-internal/ingest/      transcript tailer + HTTP ingest (phase 1)
+internal/db/queries/  sqlc query files
+internal/store/       repository layer (conversations, segments, facts, skills)
+internal/memory/      memory layers (short-term, mid-term, long-term, skill, retrieval)
+internal/llm/         provider (Gemini: summarise, extract, embed)
+internal/mcp/         MCP tool server
+internal/ingest/      transcript tailer + HTTP ingest
+internal/api/         HTTP API (ingest, read, context, search)
 migrations/           goose SQLite migrations
-docs/                 design docs
+docs/                 design + per-layer specs
 ```
 
 ## Develop
 
 ```sh
-make migrate-up   # create the schema (phase 1+)
+make migrate-up   # create the schema
 make sqlc         # generate typed queries
 make build        # go build ./...
 make test         # go test ./...
 make vet          # go vet ./...
+
+go run ./cmd/openshin serve    # run the daemon (HTTP API + background pipeline)
+go run ./cmd/openshin mcp      # MCP server (claude mcp add openshin -- ...)
 ```
 
 ## License
